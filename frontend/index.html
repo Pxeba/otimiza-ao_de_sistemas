@@ -1,0 +1,223 @@
+<html>
+<head>
+    <script src="glpk.min.js"></script>
+    <meta charset="utf-8">
+    <title>Sample</title>
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+    <style>
+        .container {
+            width: 500px;
+            margin: 100px auto;
+        }
+        input {
+            width: 300px;
+            font-size: 18px;
+            margin: 10px;
+            padding: 10px;
+        }
+
+      
+        .remove {
+            width: 30px;
+            height: 30px;
+            font-size: 20px;
+            background-color: tomato;
+            color: white;
+            border: none;
+            border-radius: 15px;
+        }
+        #addRow, #send {
+            width: 130px;
+            height: 40px;
+            font-size: 16px;
+            background-color: lightseagreen;
+            color: white;
+            border: none;
+            margin: 20px;
+        }
+        button:hover {
+            cursor: pointer;
+        }
+        tr:hover {
+            cursor: move;
+        }
+
+        .styled-select.slate {
+           height: 44px;
+           width: 70px;
+        }
+
+        .styled-select.slate select {
+           border: 1px solid #ccc;
+           font-size: 16px;
+           height: 34px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" style="text-align:center">
+        <h1 id="glpkCurrentStepTitle"> Criar Função Objetiva </h1>
+        <table id="glpkTable" align="center">
+            <tbody>
+                <tr id="row1"> 
+                    <td id="objectiveSelectData">
+                    <div class="styled-select slate">
+                      <select style="height:44px;width:70px" id="objectiveSelect">
+                        <option>Max</option>
+                        <option>Min</option>
+                      </select>
+                    </div>
+                    </td>
+                    <td><input id="in1" placeholder="z: 3*x1 + 2*x2" type="text" name="name"></td>
+                    <td><button class="remove">-</button></td>
+                </tr>
+            </tbody>
+        </table>
+        <button id="addRow">+ Add</button>
+        <button id="send">Next</button>
+        <pre id="log" style="font-size: 15px"></p>
+    </div>
+     
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+    <script>
+
+        const  OBJECTIVE_FUNCTION_STATE = 1;
+        const  CONSTRAINTS_STATE = 2;
+        const  DECISION_VARIABLES_STATE = 3;
+
+        var nStates = 3;
+        var nRows = 1;
+        var nCurrentState = 1;
+
+        var maxmin;
+        var objective;
+        var variables = [];
+        var constraints = [];
+     
+        $(function() {
+            $('tbody').sortable()
+         
+            $('#addRow').click(function(){
+                if(nCurrentState != 1) { 
+                    nRows++
+                    $('tbody').append(getTableRow())
+                }
+            });
+         
+            $(document).on('click', '.remove', function() {
+                if(nRows > 2) { 
+                    $(this).parents('tr').remove()
+                    nRows-- 
+                }
+            });
+         
+            $('#send').click(function(){
+                var values = [];
+                $('input[name="name"]').each(function(i, elem){
+                    values.push($(elem).val())
+                });
+                
+
+                switch(nCurrentState) { 
+                    case OBJECTIVE_FUNCTION_STATE:
+                        objective = values[0]
+                        cleanRows()
+                        if($("#objectiveSelect").val() == 'Max') { maxmin = 'Maximize'} else { maxmin = 'Minimize' } 
+                        $("#in1").attr("placeholder", "Acabamento: 2*x1 + x2 <= 100").val("").focus().blur()
+                        $('#glpkCurrentStepTitle').text('Implementar Restrições')
+                        nRows++;
+                        $('tbody').append(getTableRow())
+                        $("#objectiveSelectData").remove();
+                        break
+
+                    case CONSTRAINTS_STATE:
+                        constraints = values
+                        cleanRows()
+
+                        $("#1").attr("placeholder", "sample. var x1 >= 0").val("").focus().blur()
+                        $('#glpkCurrentStepTitle').text('Definir variáveis de restrição')
+                        $('#send').text('Send')
+                        break
+                        
+                    case DECISION_VARIABLES_STATE:
+                        variables = values
+
+                        $('#glpkTable').remove()
+                        $('#glpkCurrentStepTitle').text('Resultado GLPK. simplex')
+                        $('#send').remove()
+                        $('#addRow').remove()
+                        console.log(variables);
+                        showResults(convertUserInputToMathprog());
+                        break
+            }
+
+            for(var nRow=nRows;nRow>2;nRow--) {
+                $('#row'+nRow).remove()
+            }
+            
+            nRows = 2
+            nCurrentState++
+            });
+        });
+
+
+
+
+        var start;
+        var logNode = document.getElementById('log');
+
+        var log = glp_print_func = function(value){
+          var now = new Date();
+          var d = (now.getTime() - start.getTime()) / 1000;
+          logNode.appendChild(document.createTextNode(value + "\n"));
+          if (d > 60) throw new Error("timeout");
+        };
+
+        function convertUserInputToMathprog() { 
+           var result = maxmin + ' ' + replaceAll(objective, '*',' ') + '\n' + 'Subject To'  + '\n'
+           
+           constraints.forEach(function(constraint)   { result += replaceAll(constraint, '*',' ') + '\n' })
+           result += 'Bounds' + '\n'
+
+           variables.forEach(function(variable) { result += replaceAll(variable, '*',' ') + '\n' })  
+           result += 'End'
+           console.log(result) 
+           return result
+        }
+
+        function replaceAll(str, needle, replacement) {
+            return str.split(needle).join(replacement);
+        }
+
+        function cleanRows() { 
+            for(var rowIndex=1;rowIndex<=Math.min(nRows,2);rowIndex++) { 
+                document.getElementById('in' + rowIndex).value = ' '
+            }
+        }
+
+        function getTableRow() { 
+            return '<tr id=row' + nRows +  '><td><input id=in' + nRows + ' type="text" name="name"></td><td><button class="remove">-</button></td></tr>';
+        }
+
+        function showResults(result){
+            start = new Date(); 
+            logNode.innerText = "";
+            var lp = glp_create_prob();
+            glp_read_lp_from_string(lp, null, result);
+            glp_scale_prob(lp, GLP_SF_AUTO);
+            var smcp = new SMCP({presolve: GLP_ON});
+            glp_simplex(lp, smcp);
+            var iocp = new IOCP({presolve: GLP_ON});
+            glp_intopt(lp, iocp);
+            log(result + "\n\n\n")
+            log("obj:" + glp_mip_obj_val(lp));
+            for(var i = 1; i <= glp_get_num_cols(lp); i++){
+                log(glp_get_col_name(lp, i)  + " = " + glp_mip_col_val(lp, i));
+            }
+        }
+    </script>
+
+
+</body>
+</html>
